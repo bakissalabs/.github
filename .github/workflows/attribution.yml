@@ -1,0 +1,53 @@
+# Reusable: fails a pull request whose commits or description carry an attribution line.
+# The pattern comes from the caller's .githooks/attribution-pattern (its single source),
+# or from the default below when the caller has none.
+name: attribution
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  attribution:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Pattern
+        run: |
+          if [ -f .githooks/attribution-pattern ]; then
+            cp .githooks/attribution-pattern "$RUNNER_TEMP/pattern"
+          else
+            echo '^[[:space:]]*co-authored-by:|generated with \[?claude|claude\.com/claude-code|noreply@anthropic\.com' > "$RUNNER_TEMP/pattern"
+          fi
+
+      - name: Commits without attribution
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          PATTERN=$(cat "$RUNNER_TEMP/pattern")
+          status=0
+          for c in $(git rev-list "$BASE..$HEAD"); do
+            if git log -1 --format=%B "$c" | grep -Eiq "$PATTERN"; then
+              echo "::error::$(git log -1 --format='%h %s' "$c") carries a forbidden attribution line."
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Description without attribution
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          PATTERN=$(cat "$RUNNER_TEMP/pattern")
+          if printf '%s\n' "$BODY" | grep -Eiq "$PATTERN"; then
+            echo "::error::The pull request description carries a forbidden attribution line."
+            exit 1
+          fi

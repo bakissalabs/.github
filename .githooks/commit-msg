@@ -1,0 +1,10 @@
+#!/bin/sh
+# Retire du message de commit toute ligne d'attribution (co-auteur, mention d'outil).
+# Règle : bakissalabs/bakissa, CLAUDE.md, section « Commits — non négociable ».
+PATTERN=$(cat "$(git rev-parse --show-toplevel)/.githooks/attribution-pattern")
+msg="$1"
+tmp=$(mktemp)
+grep -Eiv "$PATTERN" "$msg" > "$tmp" || true
+# Supprime les lignes vides finales laissées par le retrait.
+awk '{ l[NR] = $0 } END { n = NR; while (n > 0 && l[n] ~ /^[[:space:]]*$/) n--; for (i = 1; i <= n; i++) print l[i] }' "$tmp" > "$msg"
+rm -f "$tmp"

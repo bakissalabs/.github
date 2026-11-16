@@ -1,0 +1,30 @@
+#!/bin/sh
+# Refuse de pousser un commit qui porte encore une ligne d'attribution ; si gitleaks est
+# installé, scanne aussi les commits poussés (`.gitleaks.toml`). Absent, rien n'est bloqué :
+# la CI (workflow `checks`) reste la garde qui ne dépend pas du poste.
+# Règle : bakissalabs/bakissa, CLAUDE.md, section « Commits — non négociable ».
+PATTERN=$(cat "$(git rev-parse --show-toplevel)/.githooks/attribution-pattern")
+zero=$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  if [ "$remote_sha" = "$zero" ]; then
+    range="$local_sha --not --remotes"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+  # shellcheck disable=SC2086 — `range` porte volontairement plusieurs arguments.
+  for c in $(git rev-list $range); do
+    if git log -1 --format=%B "$c" | grep -Eiq "$PATTERN"; then
+      echo "pre-push: $(git log -1 --format='%h %s' "$c") porte une ligne d'attribution interdite (voir CLAUDE.md de bakissalabs/bakissa)." >&2
+      status=1
+    fi
+  done
+  if command -v gitleaks >/dev/null 2>&1; then
+    if ! gitleaks git --no-banner --redact --log-level warn --log-opts="$range" .; then
+      echo "pre-push: gitleaks a trouvé un secret dans les commits poussés ; retire-le de l'historique et révoque-le." >&2
+      status=1
+    fi
+  fi
+done
+exit $status

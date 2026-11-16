@@ -1,0 +1,6 @@
+# gitleaks : lu par le hook pre-push et par le workflow partagé `gitleaks` de bakissalabs/.github.
+# Les règles par défaut ; un faux positif s'autorise ici, nommément, jamais un dossier entier.
+title = "bakissalabs-.github"
+
+[extend]
+useDefault = true

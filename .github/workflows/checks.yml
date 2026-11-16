@@ -1,0 +1,19 @@
+# This repository's own checks, through its reusable workflows.
+name: checks
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  attribution:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/attribution.yml
+
+  secrets:
+    uses: ./.github/workflows/gitleaks.yml
