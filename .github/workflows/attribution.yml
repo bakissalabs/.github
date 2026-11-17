@@ -1,6 +1,7 @@
-# Reusable: fails a pull request whose commits or description carry an attribution line.
-# The pattern comes from the caller's .githooks/attribution-pattern (its single source),
-# or from the default below when the caller has none.
+# Reusable: fails a pull request or a push whose commits carry an attribution line, and a pull
+# request whose description does. The pattern comes from the caller's
+# .githooks/attribution-pattern (its single source), or from the default below when the caller
+# has none.
 name: attribution
 
 on:
@@ -11,7 +12,7 @@ permissions:
 
 jobs:
   attribution:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -29,12 +30,24 @@ jobs:
 
       - name: Commits without attribution
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
         run: |
           PATTERN=$(cat "$RUNNER_TEMP/pattern")
+          is_zero() { printf '%s' "$1" | grep -Eq '^0+$'; }
+          # A deleted branch brings no commit.
+          if is_zero "$HEAD"; then exit 0; fi
+          if is_zero "$BASE" || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            # New branch, or force-push whose previous tip is gone: check every commit that no
+            # other branch already holds.
+            others=$(git for-each-ref --format='%(objectname)' refs/remotes/origin | grep -vx "$HEAD" || true)
+            # shellcheck disable=SC2086 — `others` is a list of object names, one argument each.
+            commits=$(git rev-list "$HEAD" --not $others)
+          else
+            commits=$(git rev-list "$BASE..$HEAD")
+          fi
           status=0
-          for c in $(git rev-list "$BASE..$HEAD"); do
+          for c in $commits; do
             if git log -1 --format=%B "$c" | grep -Eiq "$PATTERN"; then
               echo "::error::$(git log -1 --format='%h %s' "$c") carries a forbidden attribution line."
               status=1
@@ -43,6 +56,7 @@ jobs:
           exit $status
 
       - name: Description without attribution
+        if: github.event_name == 'pull_request'
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |

@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   attribution:
-    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/attribution.yml
 
   secrets:
