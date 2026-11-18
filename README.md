@@ -13,8 +13,9 @@ Shared configuration for the Bakissa organizations.
     caller's `.gitleaks.toml` if present.
 
   The job is skipped, before any runner starts, on a push whose head commit GitHub made (a
-  pull request merge: the pull request already checked that content), and on a pull request
-  edit that changes neither the description nor the base branch.
+  squash or merge-commit merge of a pull request, which already checked that content), and on
+  a pull request edit that changes neither the description nor the base branch. A rebase merge
+  keeps the merging user as committer, so its push is checked.
 
 ## Use
 

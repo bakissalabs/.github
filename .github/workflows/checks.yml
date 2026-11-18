@@ -20,8 +20,9 @@ jobs:
   checks:
     # Evaluated before any runner starts, so a skipped job costs nothing.
     # - push: skipped when GitHub itself made the head commit (committer `web-flow`), that is a
-    #   pull request merge, whose content the pull request already checked. A push from a
-    #   workstation is checked. Caveat: a commit made in the web editor is skipped as well.
+    #   squash or merge-commit merge of a pull request, whose content the pull request already
+    #   checked. A rebase merge keeps the merging user as committer, so its push is checked. A
+    #   push from a workstation is checked. Caveat: a web-editor commit is skipped as well.
     # - pull_request `edited`: runs only when the description or the base branch changed (the
     #   base sets the commit range); a title-only edit is skipped.
     if: >-
