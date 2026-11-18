@@ -1,0 +1,29 @@
+# This repository's own checks, through its reusable workflow. Other repositories copy this
+# file as .github/workflows/checks.yml, with `uses:` pointing at
+# bakissalabs/.github/.github/workflows/checks.yml@v1 (see README.md).
+name: checks
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One live run per pull request: a newer run checks the current state and supersedes the
+  # older one. A title-only edit, which the reusable workflow skips, gets a group of its own so
+  # that it cancels nothing; so does every push.
+  group: >-
+    ${{ github.workflow }}-${{
+    github.event_name == 'pull_request'
+    && !(github.event.action == 'edited' && !github.event.changes.body && !github.event.changes.base)
+    && github.event.pull_request.number
+    || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml

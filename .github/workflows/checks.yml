@@ -1,18 +1,101 @@
-# This repository's own checks, through its reusable workflows.
+# Reusable: every shared check in a single job, since each job is billed rounded up to the
+# minute.
+# - Attribution: fails a pull request or a push whose commits carry an attribution line, and a
+#   pull request whose description does. The pattern comes from the caller's
+#   .githooks/attribution-pattern (its single source), or from the default below when the
+#   caller has none.
+# - Secrets: scans the caller's whole history with gitleaks. The whole history rather than the
+#   pull request range: a changed .gitleaks.toml is checked against everything that exists. The
+#   binary is pinned and verified by its SHA-256: the official action requires a license for
+#   organization accounts.
 name: checks
 
 on:
-  pull_request:
-    types: [opened, edited, synchronize, reopened]
-  push:
-    branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
-  attribution:
-    uses: ./.github/workflows/attribution.yml
+  checks:
+    # Evaluated before any runner starts, so a skipped job costs nothing.
+    # - push: skipped when GitHub itself made the head commit (committer `web-flow`), that is a
+    #   pull request merge, whose content the pull request already checked. A push from a
+    #   workstation is checked. Caveat: a commit made in the web editor is skipped as well.
+    # - pull_request `edited`: runs only when the description or the base branch changed (the
+    #   base sets the commit range); a title-only edit is skipped.
+    if: >-
+      (github.event_name != 'push'
+        || github.event.head_commit.committer.username != 'web-flow')
+      && (github.event_name != 'pull_request'
+        || github.event.action != 'edited'
+        || github.event.changes.body != null
+        || github.event.changes.base != null)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-  secrets:
-    uses: ./.github/workflows/gitleaks.yml
+      - name: Attribution pattern
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: |
+          if [ -f .githooks/attribution-pattern ]; then
+            cp .githooks/attribution-pattern "$RUNNER_TEMP/pattern"
+          else
+            echo '^[[:space:]]*co-authored-by:|generated with \[?claude|claude\.com/claude-code|noreply@anthropic\.com' > "$RUNNER_TEMP/pattern"
+          fi
+
+      - name: Commits without attribution
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+        run: |
+          PATTERN=$(cat "$RUNNER_TEMP/pattern")
+          is_zero() { printf '%s' "$1" | grep -Eq '^0+$'; }
+          # A deleted branch brings no commit.
+          if is_zero "$HEAD"; then exit 0; fi
+          if is_zero "$BASE" || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            # New branch, or force-push whose previous tip is gone: check every commit that no
+            # other branch already holds.
+            others=$(git for-each-ref --format='%(objectname)' refs/remotes/origin | grep -vx "$HEAD" || true)
+            # shellcheck disable=SC2086 — `others` is a list of object names, one argument each.
+            commits=$(git rev-list "$HEAD" --not $others)
+          else
+            commits=$(git rev-list "$BASE..$HEAD")
+          fi
+          status=0
+          for c in $commits; do
+            if git log -1 --format=%B "$c" | grep -Eiq "$PATTERN"; then
+              echo "::error::$(git log -1 --format='%h %s' "$c") carries a forbidden attribution line."
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Description without attribution
+        if: github.event_name == 'pull_request'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          PATTERN=$(cat "$RUNNER_TEMP/pattern")
+          if printf '%s\n' "$BODY" | grep -Eiq "$PATTERN"; then
+            echo "::error::The pull request description carries a forbidden attribution line."
+            exit 1
+          fi
+
+      - name: Secrets
+        # Runs even when an attribution step failed: one run reports every problem.
+        if: ${{ !cancelled() }}
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner .
