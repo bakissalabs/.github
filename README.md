@@ -2,6 +2,9 @@
 
 Shared configuration for the Bakissa organizations.
 
+This repository is public so that every organization can call these workflows: nothing
+confidential belongs here.
+
 - `profile/README.md`: the public profile of [bakissalabs](https://github.com/bakissalabs).
 - `.github/workflows/checks.yml`: every shared check, in a single job (each job is billed
   rounded up to the minute):
@@ -56,12 +59,3 @@ get a group of their own, so they cancel nothing. This repository runs the same 
   fails what passed) starts `v2`; `v1` stays where it is.
 - Every release also gets an immutable semver tag (`v1.0.0`, `v1.1.0`…) for callers that want
   to pin one.
-
-## Deprecated
-
-`.github/workflows/attribution.yml` and `.github/workflows/gitleaks.yml` are the former
-two-job workflows, still called `@main` by existing callers. They stay unchanged until every
-caller has moved to `checks.yml@v1`, then they will be removed.
-
-This repository is public so that every organization can call these workflows: nothing
-confidential belongs here.
